@@ -8,4 +8,4 @@ apt-encoder.py coming soon, to take the .pgm images and convert them into .raw f
 https://github.com/gkbrk/apt-encoder
 
 apt-decoder.py takes an input .wav file that holds the apt encoded data, decodes it using a Hilbert transform and displays the encoded picture. The next few goals for this script is to make it more robust, run faster and straighten the pictures using the syncs. Adding false color, image enhancements and cropping are also possibilities. This is the resourse that I used to build this:
-https://medium.com/swlh/decoding-noaa-satellite-images-using-50-lines-of-code3c5d1d0a08da
+https://medium.com/swlh/decoding-noaa-satellite-images-using-50-lines-of-code-3c5d1d0a08da
