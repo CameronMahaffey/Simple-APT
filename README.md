@@ -34,7 +34,7 @@ If using PyCharm, it might be necessary to add \_\_init\_\_.py in the Simple-APT
 
 # About the scripts:
 
-pgm\_convert\_and\_resize.py takes common image file extensions (.jpg, .png, more coming soon) and resizes them to meet NOAA standard width of 909 pixels, while keeping the image's aspect ratio. After resizing, the image is saved into a file with the .pgm extension and formatted to meet the standard for PNM P2 (perhaps naively, but it works great for this purpose). A temporary .pgm file, named \_created\_by\_temp\_converter.py, is saved in the input folder when a non .pgm file is ran through apt\_encoder.py
+pgm\_convert\_and\_resize.py takes common image file extensions (.jpg, .png, more coming soon) and resizes them to meet NOAA standard width of 909 pixels, while keeping the image's aspect ratio. After resizing, the image is saved into a file with the .pgm extension and formatted to meet the standard for PNM P2 (perhaps naively, but it works great for this purpose). A temporary .pgm file, named \_created\_by\_temp\_converter.pgm, is saved in the input folder when a non .pgm file is ran through apt\_encoder.py
 
 apt\_encoder.py takes the .pgm images and converts them into .wav files. Sync lines, spaces and telemetry are added to the images. Currently, only pictures imported as .jpg and .png will be resized and converted into .pgm files, so it is advised to use these for now. Using .pgm files is fine, just make sure to resize them to a width of 909 pixels prior to feeding them into the script - it will throw an error. Plans are to add resizing capabilities for .pgm images as well and be script should be able to eventually handle all image formats supported by Pillow.
 
