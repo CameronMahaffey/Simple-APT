@@ -1,5 +1,5 @@
 # Simple-APT 
-A simple python script that encodes/decodes pictures using automatic picture transmission (APT). My ultimate goal is to make a user-friendly program with GUI that will encode and decode pictures. I think it would also be fun to add the ability of reading the audio signal from an SDR and doing the processing in real time (something along the lines of WxtoImg/SDR software).
+A simple python project that encodes/decodes pictures using automatic picture transmission (APT). My ultimate goal is to make a user-friendly program with GUI that will encode and decode pictures. I think it would also be fun to add the ability of reading the audio signal from an SDR and doing the processing in real time (something along the lines of WxtoImg/SDR software).
 
 # Usage:
 Type 'python apt\_encoder.py {filename}.ext' with the intended image placed in the input folder
