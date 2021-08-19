@@ -1,17 +1,17 @@
-# Simple-APT
+# Simple-APT 
 A simple python script that encodes/decodes pictures using automatic picture transmission (APT). My ultimate goal is to make a user-friendly program with GUI that will encode and decode pictures. I think it would also be fun to add the ability of reading the audio signal from an SDR and doing the processing in real time (something along the lines of WxtoImg/SDR software).
 
-Usage:
+# Usage:
 Type 'python apt\_encoder.py {filename}.ext' with the intended image placed in the input folder
   ex. python apt\_encoder.py png\_example.png
  
-Type 'python ap\t_decoder.py {filename}.wav' with the intended .wav file in the wav folder. File is placed here automatically if encoded with apt\_encoder.py
+Type 'python apt\_decoder.py {filename}.wav' with the intended .wav file in the wav folder. File is placed here automatically if encoded with apt\_encoder.py
   ex. python apt\_decoder.py png\_example.wav
   
 The resulting decoded image will be in the output folder, under the name 'output/{filename}.jpg
   ex. output/png\_example.jpg
 
-Directory Contents:
+# Directory Contents:
 Simple-APT
   input -- the directory to place the pictures to be encoded, the input directory for apt_encoder.py. A temp .pgm file is stored in here during processing.
   output -- the directory that apt_decoder.py will use to place the decoded images
@@ -30,7 +30,7 @@ apt\_encoder.py takes the .pgm images and converts them into .wav files. Sync li
 apt\_decoder.py takes an input .wav file that holds the apt encoded data, decodes it using a Hilbert transform, then saves the encoded picture as a .jpg in the output folder. The next few goals for this script is to make it more robust, run faster and straighten the pictures using the syncs. Adding false color, image enhancements and cropping soon.
 
 
-Used packages/versions:
+# Used packages/versions:
 Python 3.9
 numpy-1.21.1
 Pillow-8.3.1
