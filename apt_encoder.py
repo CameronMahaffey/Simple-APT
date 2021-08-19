@@ -68,29 +68,29 @@ print("APT encoding started..")
 
 # Main loop, sending both pictures and sync/telemetry 1 row at a time, till the height of the picture as been reached.
 for rows in range(image_height):
-    image_frame_line = rows % 128
+    image_frame_line = rows % 128   # telemetry reset every 128 rows
 
     # Sync A
     for index in sync_a:
         if index == '0':
-            stored_apt_pic.append(0)
-        else:
             stored_apt_pic.append(255)
+        else:
+            stored_apt_pic.append(0)
 
     # Space A
     for index in range(47):
-        stored_apt_pic.append(0)
-
-    # Image A
-    for index in range(apt_width):
-        if rows < image_height:
-            stored_apt_pic.append(the_pgm_image[get_pixel_position(index, rows)])
+        if rows % 120 == 0:
+            stored_apt_pic.append(255)
         else:
             stored_apt_pic.append(0)
 
+    # Image A
+    for index in range(apt_width):
+        stored_apt_pic.append(the_pgm_image[get_pixel_position(index, rows)])
+
     # Telemetry A
     for index in range(45):
-        wedge = image_frame_line / 8
+        wedge = image_frame_line // 8
         v = 0
         if wedge < 8:
             wedge += 1
@@ -100,24 +100,24 @@ for rows in range(image_height):
     # Sync B
     for index in sync_b:
         if index == '0':
+            stored_apt_pic.append(255)
+        else:
+            stored_apt_pic.append(0)
+
+    # Space B
+    for index in range(47):
+        if rows % 120 == 0:
             stored_apt_pic.append(0)
         else:
             stored_apt_pic.append(255)
 
-    # Space B
-    for index in range(47):
-        stored_apt_pic.append(255)
-
     # Image B
     for index in range(apt_width):
-        if rows < image_height:
-            stored_apt_pic.append(the_pgm_image[get_pixel_position(index, rows)])
-        else:
-            stored_apt_pic.append(0)
+        stored_apt_pic.append(the_pgm_image[get_pixel_position(index, rows)])
 
     # Telemetry B
     for index in range(45):
-        wedge = image_frame_line / 8
+        wedge = image_frame_line // 8
         v = 0
         if wedge < 8:
             wedge += 1
@@ -130,7 +130,7 @@ stored_apt_pic = np.float64(stored_apt_pic)
 sine_carrier = np.sin(carrier_hz * 2.0 * np.pi * np.arange(len(stored_apt_pic)) / baud_rate)
 
 # Modulate audio sample, store in 16bit np array, multiply pixels by factor between 32-64
-audio_sample = np.int16(sine_carrier * stored_apt_pic * 42)
+audio_sample = np.int16(sine_carrier * stored_apt_pic * 48)
 
 # Save the encoded data into a .wav file
 wav_file_name = input_file_name[:-4]
