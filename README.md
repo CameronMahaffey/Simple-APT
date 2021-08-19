@@ -32,7 +32,7 @@ Simple-APT
   
 If using PyCharm, it might be necessary to add \_\_init\_\_.py in the Simple-APT directory for the IDE to recognize that you want to include the parent directory in the search for modules, since pgm_convert_and_resize.py is imported as a module in apt_encoder.py
 
-About the scripts:
+# About the scripts:
 
 pgm\_convert\_and\_resize.py takes common image file extensions (.jpg, .png, more coming soon) and resizes them to meet NOAA standard width of 909 pixels, while keeping the image's aspect ratio. After resizing, the image is saved into a file with the .pgm extension and formatted to meet the standard for PNM P2 (perhaps naively, but it works great for this purpose). A temporary .pgm file, named \_created\_by\_temp\_converter.py, is saved in the input folder when a non .pgm file is ran through apt\_encoder.py
 
