@@ -9,17 +9,16 @@ def converter(image):
     # Open image, convert to greyscale, check width and resize if necessary
     im = Image.open(f'input/{image}')
     im = im.convert("L")
-
+    image_width, image_height = im.size
     # image_array = np.array(im)
     print(f"Size: {im.size}")      # Mode: {im.mode}")
     # im.show()
-    if im.size != 909:
+    if image_width != 909:
         print("Resizing to width of 909 keeping aspect ratio...")
-        image_width = 909
-        wpercent = (image_width / float(im.size[0]))
-        hsize = int((float(im.size[1]) * float(wpercent)))
-        im = im.resize((image_width, hsize))
-        image_width, image_height = im.size
+        new_width = 909
+        ratio = (new_width / float(image_width))
+        new_height = int((float(image_height) * float(ratio)))
+        im = im.resize((new_width, new_height))
         print(f"New Size: {im.size}")
 
     # Save image data in a numpy array and make it 1D.
