@@ -2,17 +2,17 @@
 A simple python project that encodes/decodes pictures using automatic picture transmission (APT). My ultimate goal is to make a user-friendly program with GUI that will encode and decode pictures. I think it would also be fun to add the ability of reading the audio signal from an SDR and doing the processing in real time (something along the lines of WxtoImg/SDR software).
 
 # Usage:
-Type 'python apt\_encoder.py {filename}.ext' with the intended image placed in the input folder
+Type 'python apt\_encoder.py {input_filename}.ext {output_filename}.wav' with the intended input/output in the Simple-APT directory, or add the absolute file paths instead
 
-  ex. python apt\_encoder.py png\_example.png
+  ex. python apt\_encoder.py input\png\_example.png wav\png\_example.wav           or              python apt\_encoder C:\....png\_example\_.png C:\....png\_example\_.wav
  
 Type 'python apt\_decoder.py {filename}.wav' with the intended .wav file in the wav folder. File is placed here automatically if encoded with apt\_encoder.py
 
-  ex. python apt\_decoder.py png\_example.wav
+  ex. python apt\_decoder.py wav\png\_example.wav output\png\_example.png          or              python apt\_decoder C:\....png\_example\_.wav C:\....png\_example\_.jpg
   
-The resulting decoded image will be in the output folder, under the name 'output/{filename}.jpg
+In the above example, the resulting decoded image will be in the output folder, under the name 'output/{filename}.jpg, or whichever absolute filepath you selected. Careful not to overwrite the input image wih the decoded image you create.
 
-  ex. output/png\_example.jpg
+  ex. output/png\_example.jpg 
 
 # Directory Contents:
 Simple-APT
@@ -26,6 +26,8 @@ Simple-APT
   apt\_decoder -- decode script
   
   apt\_encoder -- encode script
+  
+  gui.py -- small Tkinter GUI that allows for simple encoding/decoding and visualization
   
   pgm\_convert\_and\_resize -- script to resize images and convert into .pgm files
   
