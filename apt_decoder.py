@@ -16,7 +16,8 @@ def hilbert(data_sample):
 
 # set sampling frequency and get data from input .wav file
 input_file_name = sys.argv[1]
-fs, data = wav.read(f'wav/{input_file_name}')
+output_file_name = sys.argv[2]
+fs, data = wav.read(f'{input_file_name}')
 data_am = hilbert(data)  # get the amplitude envelope of data signal
 
 frame_width = int(0.5 * fs)
@@ -38,6 +39,6 @@ for p in range(data_am.shape[0]):
         if py >= h:
             break
 
-print(f"Finished. Image saved in output/{input_file_name[:-4]}.jpg")
+print(f"Finished. Image saved in {output_file_name}")
 image = image.resize((w, h))
-image.save(f"output/{input_file_name[:-4]}.jpg")
+image.save(f"{output_file_name}")
