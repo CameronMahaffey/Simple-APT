@@ -2,16 +2,106 @@ from tkinter import *
 from tkinter import messagebox
 from tkinter import filedialog
 from tkinter import ttk
+from tkinter import colorchooser
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from PIL import ImageTk, Image, ImageOps, ImageFilter
-import winsound  # use a different module if not on windows
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from PIL import ImageTk, Image, ImageOps, ImageFilter, ImageColor
+import pygame
 import pathlib
 import subprocess
 import numpy as np
 import scipy.io.wavfile as wav
 import scipy.signal as signal
 import sys
+
+
+# Define a custom navigation toolbar for the plots
+class CustomToolbar(NavigationToolbar2Tk):
+    def __init__(self,canvas_,parent_):
+        self.toolitems = (
+            ('Home', 'Reset View', 'home', 'home'),
+            ('Back', 'Back', 'back', 'back'),
+            ('Forward', 'Forward', 'forward', 'forward'),
+            (None, None, None, None),
+            ('Pan', 'Pan', 'move', 'pan'),
+            ('Zoom', 'Zoom', 'zoom_to_rect', 'zoom'),
+            (None, None, None, None),
+            ('Save', 'Save Figure', 'filesave', 'save_figure')
+        )
+        NavigationToolbar2Tk.__init__(self, canvas_, parent_)
+
+
+# Function to add false color to a greyscale image
+def false_color(image_to_change):
+    global rgby_tuple
+    colors = rgby_tuple
+    if image_to_change.mode not in ['L']:
+        raise TypeError('Unsupported source image mode: {}'.format(image_to_change.mode))
+    image_to_change.load()
+    print(image_to_change.mode)
+
+    # Create look-up-tables (luts) to map luminosity ranges to components
+    # of the colors given in the color palette.
+    num_colors = len(colors)
+    palette = [colors[int(i / 256. * num_colors)] for i in range(256)]
+    luts = (tuple(c[0] for c in palette) +
+            tuple(c[1] for c in palette) +
+            tuple(c[2] for c in palette))
+
+    # Create grayscale version of image of necessary.
+    grey_scale = image_to_change if Image.getmodebands(image_to_change.mode) == 1 else grayscale(image_to_change)
+
+    # Convert grayscale to an equivalent RGB mode image.
+    if Image.getmodebands(image_to_change.mode) < 4:  # Non-alpha image?
+        merge_args = ('RGB', (grey_scale, grey_scale, grey_scale))  # RGB version of grayscale.
+
+    else:  # Include copy of src image's alpha layer.
+        a = Image.new('L', image_to_change.size)
+        a.putdata(image_to_change.getdata(3))
+        luts += tuple(range(256))  # Add a 1:1 mapping for alpha values.
+        merge_args = ('RGBA', (grey_scale, grey_scale, grey_scale, a))  # RGBA version of grayscale.
+
+    # Merge all the grayscale bands back together and apply the luts to it.
+    return Image.merge(*merge_args).point(luts)
+
+
+# Function that will be invoked when the color wheel button is clicked
+def choose_color():
+    global dec_image
+    color_red = colorchooser.askcolor(title ="Choose RED")
+    color_green = colorchooser.askcolor(title="Choose GREEN")
+    color_blue = colorchooser.askcolor(title="Choose BLUE")
+    color_red = color_red[1].lstrip('#')
+    color_red = [color_red[0:2], color_red[2:4], color_red[4:6]]
+    color_red = [int(i, 16) for i in color_red]
+    color_green = color_green[1].lstrip('#')
+    color_green = [color_green[0:2], color_green[2:4], color_green[4:6]]
+    color_green = [int(i, 16) for i in color_green]
+    color_blue = color_blue[1].lstrip('#')
+    color_blue = [color_blue[0:2], color_blue[2:4], color_blue[4:6]]
+    color_blue = [int(i, 16) for i in color_blue]
+    change_colors((color_red, color_green, color_blue,))
+
+    if rb2.get() == "False Color":
+        image_to_enhance = (ImageTk.getimage(new_dec_image[0])).convert('L')
+        enhanced_image = false_color(image_to_enhance)
+        enhanced_image = ImageTk.PhotoImage(enhanced_image)
+
+        if len(new_dec_image) == 2:
+            new_dec_image.pop()
+        new_dec_image.append(enhanced_image)
+
+        # reload processed image in the frame
+        dec_image.grid_forget()
+        dec_image = Label(dec_image_frame, image=new_dec_image[1], padx=10, pady=10, relief=SUNKEN)
+        dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+
+
+# Function to change the RGB colors
+def change_colors(color_tuple):
+    global rgby_tuple
+    rgby_tuple = color_tuple + ([255, 255, 0],)
+    print(f"RGBY Tup: {rgby_tuple}")
 
 
 # Get the current index of the image
@@ -42,43 +132,130 @@ def resize_to_fit(image):
 
 # Update the plots with samples from the given wav file
 def update_graph(which_plot):
-    global enc_plot
     global enc_canvas
-    global dec_plot
     global dec_canvas
+    global wav_file
+    global am_sample_data
 
     if which_plot == 1:
+        baud, wav_file = wav.read(enc_entry_output_text.get())  # get the wav file from output of enc
+        sample_data = wav_file[:4160]   # get some samples
+
         enc_subplot.clear()
         enc_subplot.set_title('Output WAV')
         enc_subplot.set_xlabel('Samples')
         enc_subplot.set_ylabel('Amplitude')
-        baud, wav_file = wav.read(enc_entry_output_text.get())  # get the wav file from output of enc
-        sample_data = wav_file[:4160]   # get some samples
+        enc_subplot.set_xticks(np.arange(0, 5200, 1040))
+        enc_subplot.set_yticks(np.arange(min(sample_data) - 1000, max(sample_data) + 1000, 4000))
 
-        enc_canvas.tkcanvas.grid_forget()
         enc_subplot.plot(sample_data, color=background_color, label="wav")
-        enc_canvas = FigureCanvasTkAgg(enc_plot, master=encoder_tab)
-        enc_canvas.get_tk_widget().grid(row=0, column=4, columnspan=4, padx=10, pady=50)
-        enc_canvas.tkcanvas.grid(row=0, column=4, columnspan=4, padx=10, pady=50)
-        # print("Encoder Plot Updated")
+        enc_canvas.draw()
         enc_subplot.legend()
+        print("Encoder Plot Updated")
     else:
+        baud, wav_file = wav.read(dec_entry_input_text.get())  # get the wav file from input of dec
+        sample_data = wav_file[:4160]  # get some samples
+        am_sample_data = np.abs(signal.hilbert(wav_file))
+        am_samples = am_sample_data[:4160]  # get some samples
+
         dec_subplot.clear()
         dec_subplot.set_title('Input WAV')
         dec_subplot.set_xlabel('Samples')
         dec_subplot.set_ylabel('Amplitude')
-        baud, wav_file = wav.read(dec_entry_input_text.get())  # get the wav file from input of dec
-        sample_data = wav_file[:4160]   # get some samples
-        am_sample_data = np.abs(signal.hilbert(sample_data))
+        dec_subplot.set_xticks(np.arange(0, 5200, 1040))
+        dec_subplot.set_yticks(np.arange(min(sample_data) - 1000, max(sample_data) + 1000, 4000))
 
-        dec_canvas.tkcanvas.grid_forget()
         dec_subplot.plot(sample_data, color=background_color, label="wav")
-        dec_subplot.plot(am_sample_data, color="red", label="data")
-        dec_canvas = FigureCanvasTkAgg(dec_plot, master=decoder_tab)
-        dec_canvas.get_tk_widget().grid(row=0, column=0, columnspan=4, padx=10, pady=50)
-        dec_canvas.tkcanvas.grid(row=0, column=0, columnspan=4, padx=10, pady=50)
-        # print("Decoder Plot Updated")
+        dec_subplot.plot(am_samples, color="red", label="data")
+        dec_canvas.draw()
         dec_subplot.legend()
+        print("Decoder Plot Updated")
+
+
+# Declare and register callbacks
+# def on_xlims_change(event_ax):
+#     print("updated xlims: ", event_ax.get_xlim())
+#
+#
+# def on_ylims_change(event_ax):
+#     print("updated ylims: ", event_ax.get_ylim())
+
+
+# Callback function for button press event inside figure
+def mouse_clicked(event):
+    # print(f"Mouse clicked")
+    global dec_canvas
+    global cid_pressed
+    stop_plot()
+    dec_canvas.mpl_disconnect(cid_pressed)
+    cid_pressed = dec_canvas.mpl_connect('button_release_event', mouse_released)
+
+
+# Callback function for button press event inside figure
+def mouse_released(event):
+    global dec_canvas
+    global cid_pressed
+    # print(f"Mouse released")
+
+    dec_canvas.mpl_disconnect(cid_pressed)
+    pre_run_plot(False)
+
+
+# Function called that starts timer
+def pre_run_plot(is_running):
+    global dec_canvas
+    global cid_pressed
+    global running
+    running = is_running
+    if running:
+        return
+    running = True
+    print("Running Plot.")
+    cid_pressed = dec_canvas.mpl_connect('button_press_event', mouse_clicked)
+    run_plot()
+
+
+# Timer function that calls itself when updating graph
+def run_plot():
+    global dec_canvas
+    global timer_on
+    global plot_counter
+
+    try:
+        sample_data = wav_file[plot_counter:plot_counter + 4160]  # get some samples
+        am_samples = am_sample_data[plot_counter:plot_counter + 4160]  # get some am samples
+
+        plot_counter += graph_speed.get()
+
+        dec_subplot.clear()
+        dec_subplot.set_title('Input WAV')
+        dec_subplot.set_xlabel('Samples')
+        dec_subplot.set_ylabel('Amplitude')
+        dec_subplot.set_xticks(np.arange(0, 5200, 1040))
+
+        dec_subplot.plot(sample_data, color=background_color, label="wav")
+        dec_subplot.plot(am_samples, color="red", label="data")
+        dec_canvas.draw()
+        dec_subplot.legend()
+        # print("im updating every sec")
+        timer_on = root.after(10, run_plot)
+    except:
+        print("Reached end of file.")
+        stop_plot()
+        plot_counter = 0
+
+
+# Function to stop timer function, and thus stop updating graph
+def stop_plot():
+    global running
+    global timer_on
+    global dec_canvas
+    global cid_pressed
+
+    running = False
+    root.after_cancel(timer_on)
+    dec_canvas.mpl_disconnect(cid_pressed)
+    print("Stopped Plot.")
 
 
 # Create forward button command for browsing pictures
@@ -98,8 +275,9 @@ def forward(image_index):
     if image_index == len(encoder_image_list):
         button_forward = Button(encoder_tab, text=">>", state=DISABLED)
 
-    button_backward.grid(row=1, column=0, sticky=E)
-    button_forward.grid(row=1, column=2, sticky=W)
+    button_backward.grid(row=1, column=0, padx=20, sticky=NW)
+    button_forward.grid(row=1, column=0, padx=20, sticky=NE)
+
 
     enc_entry_input_text.set(enc_image_filepath_list[image_index - 1])
 
@@ -121,8 +299,8 @@ def backward(image_index):
     if image_index <= 1:
         button_backward = Button(encoder_tab, text="<<", state=DISABLED)
 
-    button_backward.grid(row=1, column=0, sticky=E)
-    button_forward.grid(row=1, column=2, sticky=W)
+    button_backward.grid(row=1, column=0, padx=20, sticky=NW)
+    button_forward.grid(row=1, column=0, padx=20, sticky=NE)
 
     enc_entry_input_text.set(enc_image_filepath_list[image_index - 1])
 
@@ -163,7 +341,7 @@ def browse_dir(tab, io):
         if io == 1:
             if (tab == 1):  # only applies to input of encoder
                 rb1.set("Nothing")    # reset the radio buttons
-                new_image_list(dir_path)  # create a new image list with the contents in the directory
+                check_if_loaded(dir_path)
             if (tab == 0):  # only applies to the input of decoder
                 update_graph(tab)
 
@@ -183,6 +361,7 @@ def new_image_list(directory_path):
     clicked_image = flipped_filename[::-1]  # flips the file name, this was the clicked image
     print(f'Selected image: {clicked_image}\n')
     del encoder_image_list[:]  # clear image list to upload new batch   (to load new images into list and into frame)
+    del enhanced_image_list[:]
     del enc_image_filename_list[:]  # clear image filename list    (for indexing purposes)
     del enc_image_filepath_list[:]  # clear the image filepath list (for entry box)
     current_image_index = 0  # reset the clicked image index
@@ -193,7 +372,7 @@ def new_image_list(directory_path):
             print(image_file_path)
             enc_image_filepath_list.append(image_file_path)  # add the path to the filepath list
             enc_image_filename_list.append(image_file_path[len(directory_path):])  # add it to filename list
-            if image_file_path.lower().endswith('.pgm'):  # placeholder photo till i can preview .pgms
+            if image_file_path.lower().endswith('.pgm'):
                 pgm_array = open(image_file_path, 'r')  # open the .pgm file to create a preview image
                 for i in range(4):  # remove first four lines of pgm
                     pgm_array.readline()
@@ -213,28 +392,33 @@ def new_image_list(directory_path):
             print(f'Clicked image index: {current_image_index + 1}')
     update_enc_image(current_image_index)  # update the encoder image
 
-    # Update the browsing forward/back buttons depending on index of selected image
-    update_buttons(current_image_index)
-
     # Update the status bar
     update_status(f"Image {str(current_image_index + 1)} of {str(len(encoder_image_list))}")
     print(f"length of image list: {len(encoder_image_list)}\n")
 
 
+# Check to see if the new contents to be loaded are actually the old contents, save time
+def check_if_loaded(file_path):
+    print(file_path)
+    print(enc_image_filepath_list)
+    file_path = file_path.replace('/', '\\')
+    if file_path in enc_image_filepath_list:
+        position_in_list = enc_image_filepath_list.index(file_path)
+        print(f"Selected image and directory already loaded into memory.")
+        update_status("Selected image and directory already loaded into memory.")
+        set_current_image_index(position_in_list)
+        update_enc_image(position_in_list)
+    else:
+        new_image_list(file_path)
+
+
 # Function that is called when return is pressed in one of the entry input boxes
 def entry_return_pressed(tab):
-    print("Enter Pressed.")
+    # print("Enter Pressed.")
     if tab == 1:
         input_text = enc_entry_input_text.get()
-        input_text = input_text.replace('/', '\\')
         if input_text != '':
-            if input_text in enc_image_filepath_list:
-                position_in_list = enc_image_filepath_list.index(input_text)
-                print(f"Selected image and directory already loaded into memory.")
-                set_current_image_index(position_in_list)
-                update_enc_image(position_in_list)
-            else:
-                new_image_list(input_text)
+            check_if_loaded(input_text)
     else:
         input_text = dec_entry_input_text.get()
         if input_text != '':
@@ -244,8 +428,9 @@ def entry_return_pressed(tab):
 # Function called when the image in the encoder tab needs to be updated
 def update_enc_image(index):
     global enc_image
-    print(f"Enc image update index {index + 1}")
+    update_buttons(index)  #update buttons every time the enc_image is changed
     enc_image.grid_forget()
+
     if rb1.get() == "Nothing":
         used_image = encoder_image_list[index]
     else:
@@ -271,8 +456,8 @@ def update_buttons(image_index):
         button_forward = Button(encoder_tab, text=">>", command=lambda: forward(image_index + 2))
         button_backward = Button(encoder_tab, text="<<", command=lambda: backward(image_index))
 
-    button_backward.grid(row=1, column=0, sticky=E)
-    button_forward.grid(row=1, column=2, sticky=W)
+    button_backward.grid(row=1, column=0, padx=20, sticky=NW)
+    button_forward.grid(row=1, column=0, padx=20, sticky=NE)
 
 
 # Function to update the status bars at the bottom
@@ -312,6 +497,9 @@ def popups(tab):
         output_entry_used = dec_entry_output_text
         input_file_path =  dec_entry_input_text.get()  # get filepath from decoder input box
     if msg == 1:
+        # quit pygame mixer to get permission to .wav
+        if pygame.mixer.get_init() is not None:
+            pygame.mixer.quit()
         # save the temporary image into folder
         image_index = get_current_image_index()
         if rb1 == "Nothing":
@@ -324,13 +512,30 @@ def popups(tab):
         save_this_image.save('temp.jpg', "JPEG")
         output_file_path = output_entry_used.get()
         # if empty, ask for a folder dialog to save and place it into output_entry_used.set()
+        if output_file_path == '':
+            ask_folder = filedialog.askdirectory() + '/'
+            if ask_folder == '/':
+                update_status("Action Cancelled.")
+                print("Action Cancelled.")
+                return
+            print(f"Folder selected for save: {ask_folder}")
+            image_index = get_current_image_index()
+            if len(enc_image_filename_list) != 0:
+                output_file_path = ask_folder + enc_image_filename_list[image_index]
+            else:
+                output_file_path = ask_folder + "placeholder_name.jpg"
+            if tab == 1:
+                output_file_path = output_file_path[:-4] + '.wav'
+            output_entry_used.set(output_file_path)
         print(f"Calling process: {call_process} {input_file_path} {output_file_path}")
         call_to_process = subprocess.Popen(f"{call_process} {input_file_path} {output_file_path}",
                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE, shell=True)
-        sysout_redirector(call_to_process.stdout.read())
+        sysout_redirector(call_to_process.stdout.read())  # pipe stdout to program output tab
 
         delete_temp_file = pathlib.Path("temp.jpg")
         delete_temp_file.unlink()
+
+        pygame.mixer.init()  #re initialize mixer
 
         if output_file_path != '' and input_file_path != '':
             if tab == 0:
@@ -347,16 +552,42 @@ def popups(tab):
         print("Action Cancelled.")
 
 
-# Make simple playback/stop function with winsound module
-def wav_playback(file_path):
-    if file_path is None:
-        # Stop playback
-        winsound.PlaySound(None, winsound.SND_ASYNC)
-        print(f"Playing {file_path}")
+# Make simple playback/stop/pause functions with pygame module
+def play_wav():
+    global paused
+    global pause_button
+    paused = False
+    pause_button.config(text="Pause")
+    file_path = dec_entry_input_text.get()
+    pygame.mixer.music.stop()  # just in case something is still playing
+    pygame.mixer.music.load(file_path)
+    pygame.mixer.music.play(loops=0)
+    print("Playing wav.")
+
+
+# Stop function
+def stop_wav():
+    global paused
+    pygame.mixer.music.stop()  # just in case something is still playing
+    paused = True
+    print("Playback stopped.")
+
+
+# Pause function
+def pause_wav(is_paused):
+    global paused
+    global pause_button
+    paused = is_paused
+    if paused:
+        pause_button.config(text="Pause")
+        pygame.mixer.music.unpause()
+        paused = False
+        print("Playback unpaused.")
     else:
-        # Start Playback
-        winsound.PlaySound(file_path, winsound.SND_ASYNC)
-        print(f"Playback stopped.")
+        pause_button.config(text="Resume")
+        pygame.mixer.music.pause()
+        paused = True
+        print("Playback paused.")
 
 
 # Function to send output of encoder to input of decoder
@@ -419,6 +650,23 @@ def mirror_image():
     update_enc_image(image_index)
 
 
+# Function to save image to a selected directory with a name
+def save_image():
+    image_index = get_current_image_index()
+    save_to_filepath = filedialog.asksaveasfilename()
+    if not save_to_filepath.endswith(('.jpg', '.png')):
+        save_to_filepath += '.jpg'
+    print(f"Saving image to {save_to_filepath}...")
+    if rb1.get() == "Nothing":
+        save_this_image = ImageTk.getimage(encoder_image_list[image_index])
+    else:
+        save_this_image = ImageTk.getimage(enhanced_image_list[image_index])
+    save_this_image = save_this_image.convert('RGB')
+    save_this_image.save(save_to_filepath, "JPEG")
+    print(f"Image saved to {save_to_filepath}")
+    update_status(f"Image saved to {save_to_filepath}")
+
+
 # Function to handle the effects on images from selection between radio buttons
 def enhancement_handler():
     selected_rb = rb1.get()
@@ -457,6 +705,43 @@ def enhancement_handler():
     update_enc_image(image_index)
 
 
+# Function to handle the effects on images from selection between radio buttons
+def processor_handler():
+    global dec_image
+    selected_rb = rb2.get()
+    print(f"Selected button: {selected_rb}")
+    update_status(f"Selected button:  {selected_rb}")
+    copy_of_image = new_dec_image[0]
+    image_to_enhance = ImageTk.getimage(copy_of_image)  # convert into a PIL image
+    image_to_enhance = image_to_enhance.convert('L')  # convert into greyscale
+    # print(f'image mode: {image_to_enhance.mode}')
+    if selected_rb == "Original":
+        enhanced_image = new_dec_image[0]
+    elif selected_rb == "False Color":
+        enhanced_image = false_color(image_to_enhance)
+    elif selected_rb == "Edge Enhance":
+        enhanced_image = image_to_enhance.filter(ImageFilter.EDGE_ENHANCE)
+    elif selected_rb == "Gauss Blur":
+        enhanced_image = image_to_enhance.filter(ImageFilter.GaussianBlur(radius=3))
+    elif selected_rb == "EQ":
+        enhanced_image = ImageOps.equalize(image_to_enhance)
+    elif selected_rb == "Posterize":
+        enhanced_image = ImageOps.posterize(image_to_enhance, 2)
+    else:
+        return
+    if selected_rb != "Original":  # convert back into a PhotoImage object
+        enhanced_image = ImageTk.PhotoImage(enhanced_image)
+
+    if len(new_dec_image) == 2:
+        new_dec_image.pop()
+    new_dec_image.append(enhanced_image)
+
+    # reload processed image in the frame
+    dec_image.grid_forget()
+    dec_image = Label(dec_image_frame, image=new_dec_image[1], padx=10, pady=10, relief=SUNKEN)
+    dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+
+
 # Function for accepting enhancements button
 def accept_enhancements():
     image_index = get_current_image_index()
@@ -465,18 +750,37 @@ def accept_enhancements():
     rb1.set("Nothing")
 
 
+# Function I might use to make clicking tabs more interesing
+def tab_clicked(event):
+    print("tab switched")
+    # print(f"tab clicked, event:{event}")
+    # screen_width = encoder_tab.winfo_width()
+    # screen_height = encoder_tab.winfo_screenheight()
+    # print(f" W x H: {screen_width} x {screen_height}")
+    # # resize the screen depending on tab clicked, determined by x pos. of click
+    # if 0 <= event.x <= 48:
+    #     # root.geometry()
+    # elif 49 <= event.x <= 96:
+    #     # root.geometry()
+    # elif 97 <= event.x <= 192:
+    #     # root.geometry()
+
+
 # Initializations of some commonly used vars and lists
 encoder_image_list = []
 enhanced_image_list = []
 new_dec_image = []
-enc_image_filename_list = []
-enc_image_filepath_list = []
+enc_image_filename_list = []  # store image file names
+enc_image_filepath_list = []  # store image filepaths in selected dir
 background_color = '#3F4A57'  # default bg color
 other_object_color = '#3695C2'
 current_image_index = 0
-current_image_index = 0
+plot_counter = 0
 sys.stdout.write = sysout_redirector
-
+pygame.mixer.init()  #initialize pygame mixer
+paused = False
+running = False
+rgby_tuple = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
 
 # Make the root GUI, give it a title and icon, change the font and background
 root = Tk()
@@ -490,69 +794,99 @@ tab_control = ttk.Notebook(root)
 encoder_tab = Frame(tab_control, bg=background_color)
 decoder_tab = Frame(tab_control, bg=background_color)
 read_only_tab = Frame(tab_control, bg=background_color)
+testing_tab = Frame(tab_control, bg=background_color)
 
 # Pack tabs to screen
 tab_control.add(encoder_tab, text="Encode")
 tab_control.add(decoder_tab, text="Decode")
 tab_control.add(read_only_tab, text="Program Output")
+tab_control.add(testing_tab, text="Testing")
 tab_control.pack()
+tab_control.bind('<Button-1>', tab_clicked)
 
 # Create the title labels for first two tabs
 encoder_tab_title = Label(encoder_tab, text="SIMPLE APT ENCODER",
                           font="Abadi 24 italic bold", bg=other_object_color,
-                          padx=10, relief=RIDGE).grid(row=0, column=3, columnspan=5, sticky=NE)
+                          padx=10, relief=RIDGE).grid(row=0, column=2, sticky=NE)
 decoder_tab_title = Label(decoder_tab, text="SIMPLE APT DECODER",
                           font="Abadi 23 italic bold", bg=other_object_color,
-                          padx=10, relief=RIDGE).grid(row=0, column=0, columnspan=6, sticky=NW)
+                          padx=10, relief=RIDGE).grid(row=0, column=0, sticky=NW)
 
-# Create initial image object and place in the encoder image list
-initial_image = ImageTk.PhotoImage(resize_to_fit(Image.open('misc/initial_image.png')))
-encoder_image_list.append(initial_image)
-enhanced_image_list.append(initial_image)
+# Create initial image objects and place in the initial image lists
+initial_enc_image = ImageTk.PhotoImage(resize_to_fit(Image.open('misc/initial_image.png')))
+initial_dec_image = ImageTk.PhotoImage(resize_to_fit(Image.open('misc/initial_image_grey.png')))
+encoder_image_list.append(initial_enc_image)
+new_dec_image.append(initial_dec_image)
+enhanced_image_list.append(initial_enc_image)
+enc_image_filename_list.append('initial_image.png')
+enc_image_filepath_list.append('misc/initial_image.png')
 
 # Create basic 'input/output' labels for first two tabs
-encoder_input_label = Label(encoder_tab, text="input", borderwidth=3,
-                            relief=RIDGE, padx=10).grid(row=1, column=1)
-encoder_output_label = Label(encoder_tab, text="output", borderwidth=3,
-                            relief=RIDGE, padx=10).grid(row=1, column=5)
-decoder_input_label = Label(decoder_tab, text="input", borderwidth=3,
-                            relief=RIDGE, padx=10).grid(row=1, column=2)
-decoder_output_label = Label(decoder_tab, text="output", borderwidth=3,
-                            relief=RIDGE, padx=10).grid(row=1, column=7)
+encoder_input_label = Label(encoder_tab, text="input", borderwidth=2, bg=other_object_color,
+                            font="times 12 underline", relief=RIDGE, padx=10).grid(row=1, column=0)
+encoder_output_label = Label(encoder_tab, text="output", borderwidth=2, bg=other_object_color,
+                            font="times 12 underline", relief=RIDGE, padx=10).grid(row=1, column=2)
+decoder_input_label = Label(decoder_tab, text="input", borderwidth=2, bg=other_object_color,
+                            font="times 12 underline", relief=RIDGE, padx=10).grid(row=1, column=0)
+decoder_output_label = Label(decoder_tab, text="output", borderwidth=2, bg=other_object_color,
+                            font="times 12 underline", relief=RIDGE, padx=10).grid(row=1, column=2)
 
-# Create the plot
+# Create the plots
 enc_plot = Figure(figsize=(4, 3), dpi=100, tight_layout=TRUE,
                   facecolor=other_object_color, linewidth=1)
 dec_plot = Figure(figsize=(4, 3), dpi=100, tight_layout=TRUE,
                   facecolor=other_object_color, linewidth=1)
 enc_subplot = enc_plot.add_subplot(111)
 enc_subplot.set_facecolor(other_object_color)
+enc_subplot.axes.format_coord = lambda x, y: "in figure"
 dec_subplot = dec_plot.add_subplot(111)
 dec_subplot.set_facecolor(other_object_color)
-enc_subplot.set_title('Output WAV')
-enc_subplot.set_xlabel('Samples')
-enc_subplot.set_ylabel('Amplitude')
-dec_subplot.set_title('Input WAV')
-dec_subplot.set_xlabel('Samples')
-dec_subplot.set_ylabel('Amplitude')
+dec_subplot.axes.format_coord = lambda x, y: "in figure"
 
-# Create Figure Plot objects
-enc_canvas = FigureCanvasTkAgg(enc_plot, master=encoder_tab)
-enc_canvas.tkcanvas.grid(row=0, column=4, columnspan=4, padx=10, pady=50)
+# Create the frames for the figures to sit in
+enc_plot_frame = Frame(encoder_tab, bg=background_color)
+enc_plot_frame.grid(row=0, column=2, padx=10, pady=50, sticky=S)
+dec_plot_frame = Frame(decoder_tab, bg=background_color)
+dec_plot_frame.grid(row=0, column=0, padx=10, pady=50, sticky=S)
 
-dec_canvas = FigureCanvasTkAgg(dec_plot, master=decoder_tab)
-dec_canvas.tkcanvas.grid(row=0, column=0, columnspan=4, padx=10, pady=50)
+# Create Encoder Figure Plot object with toolbar
+enc_canvas = FigureCanvasTkAgg(enc_plot, master=enc_plot_frame)
+enc_toolbar = CustomToolbar(enc_canvas, enc_plot_frame)
+enc_toolbar.config(bg=background_color)
+enc_toolbar._message_label.config(bg=background_color, fg="light grey")
+enc_toolbar.update()
+enc_toolbar.grid(row=1, column=0, padx=10, sticky=W + E)
+enc_canvas.tkcanvas.grid(row=0, column=0)
+
+# Create Decoder Figure Plot object with toolbar
+dec_canvas = FigureCanvasTkAgg(dec_plot, master=dec_plot_frame)
+dec_toolbar = CustomToolbar(dec_canvas, dec_plot_frame)
+dec_toolbar.config(bg=background_color)
+dec_toolbar._message_label.config(bg=background_color, fg="light grey")
+dec_toolbar.update()
+dec_toolbar.grid(row=1, column=0, padx=10, sticky=W + E)
+dec_canvas.tkcanvas.grid(row=0, column=0)
+
+# Slider for speed of graph updates
+graph_speed = Scale(decoder_tab, from_=12, to=416, orient=HORIZONTAL, resolution=4,
+                    showvalue=0, troughcolor=other_object_color, bg=background_color)
+graph_speed.grid(row=0, column=0, padx=50, pady=20, sticky=SE)
+graph_speed.set(416)
+
+# Labels to hide random whitespace box caused by Navigation Toolbar
+Label(dec_plot_frame, text="  ", bg=background_color).grid(row=1, column=0, padx=10, sticky=NS + E)  # hide whitespace
+Label(enc_plot_frame, text="  ", bg=background_color).grid(row=1, column=0, padx=10, sticky=NS + E)  # hide whitespace
 
 # Create the encoder and decoder image frames
 enc_image_frame = LabelFrame(encoder_tab, bg=other_object_color)
-enc_image_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+enc_image_frame.grid(row=0, column=0, padx=10, pady=10, sticky=W)
 dec_image_frame = LabelFrame(decoder_tab, bg=other_object_color)
-dec_image_frame.grid(row=0, column=6, columnspan=3, padx=10, pady=10)
+dec_image_frame.grid(row=0, column=2, padx=10, pady=10, sticky=E)
 
 # Create and place the initial image object in the respective image frames
 enc_image = Label(enc_image_frame, image=encoder_image_list[0], relief=SUNKEN)
 enc_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
-dec_image = Label(dec_image_frame, image=encoder_image_list[0], relief=SUNKEN)
+dec_image = Label(dec_image_frame, image=new_dec_image[0], relief=SUNKEN)
 dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
 # Create and place the frame that will hold the output of program(s)
@@ -573,16 +907,15 @@ read_only_scrollbar.grid(row=1, column=1, sticky=N + S)
 
 # Enhancement Frame in the Encoder Tab
 enhancement_frame = LabelFrame(encoder_tab, bg=other_object_color)
-enhancement_frame.grid(row=0, column=3, padx=10, pady=30)
+enhancement_frame.grid(row=0, column=1, padx=10, pady=30)
 enc_frame_title = Label(enhancement_frame, text="Enhancements", bg=other_object_color,
                         font="times 12 underline").grid(row=0, column=0, sticky=W + E)
 
 # Processing Frame in the Decoder Tab
 processing_frame = LabelFrame(decoder_tab, bg=other_object_color)
-processing_frame.grid(row=0, column=4, columnspan=2, padx=10, pady=10)
+processing_frame.grid(row=0, column=1, padx=10, pady=10)
 dec_frame_title = Label(processing_frame, text="Processing", bg=other_object_color,
                         font="times 12 underline").grid(row=0, column=0, sticky=W + E)
-
 
 rb1 = StringVar(None, "Nothing")
 # Encoder Enhancement Radio Buttons
@@ -604,110 +937,114 @@ for (text, value) in enhancement_values.items():
     rb_row_placement += 1
 
 
-rb2 = IntVar(None, "1")
+rb2 = StringVar(None, "Original")
 # Decoder Processing Radio Buttons
-processing_values = {"Original": "1",
-                     "False Color": "2",
-                     "CLUT": "3",
-                     "Flip RB": "4",
-                     "Opt. 5": "5",
-                     "Opt. 6": "6"}
+processing_values = {"Original": "Original",
+                     "Gauss Blur": "Gauss Blur",
+                     "Edge Enhance": "Edge Enhance",
+                     "EQ": "EQ",
+                     "Posterize": "Posterize",
+                     "False Color": "False Color"}
 
 rb_row_placement = 1
 for (text, value) in processing_values.items():
     Radiobutton(processing_frame, text=text, variable=rb2,
-                bg=other_object_color, activebackground=other_object_color,
+                command=processor_handler, bg=other_object_color, activebackground=other_object_color,
                 value=value, indicator=1).grid(row=rb_row_placement, column=0, pady=1, sticky=W)
     rb_row_placement += 1
 
 # Initial Status Bars
 enc_status = Label(encoder_tab, text="Select an input file with 'Browse' or type in the filepath",
                    bd=1, relief=SUNKEN, anchor=E, bg='light grey').grid(
-    row=5, column=0, columnspan=9, sticky=W + E)
+    row=5, column=0, columnspan=3, sticky=W + E)
 dec_status = Label(decoder_tab, text="Select an input file with 'Browse' or type in the filepath",
                    bd=1, relief=SUNKEN, anchor=E, bg='light grey').grid(
-    row=5, column=0, columnspan=9, sticky=W + E)
+    row=5, column=0, columnspan=3, sticky=W + E)
 
 # Create entry boxes for encode and decode tab
 enc_entry_input_text = StringVar(None, "misc/initial_image.png")
 enc_entry_input_box = Entry(encoder_tab, bg='light grey', borderwidth=2,
                             textvariable=enc_entry_input_text)
-enc_entry_input_box.bind("<Return>", (lambda event: entry_return_pressed(1)))
-enc_entry_input_box.grid(row=2, column=1)
+enc_entry_input_box.bind("<Return>", (lambda event: entry_return_pressed(1)))  # keybind to sense enter pressed
+enc_entry_input_box.grid(row=2, column=0)
 
 enc_entry_output_text = StringVar(None, "wav/initial_wav.wav")
 enc_entry_output_box = Entry(encoder_tab, bg='light grey', borderwidth=2,
-                             textvariable=enc_entry_output_text).grid(row=2, column=5)
+                             textvariable=enc_entry_output_text).grid(row=2, column=2)
 
 dec_entry_input_text = StringVar(None, "wav/initial_wav.wav")
 dec_entry_input_box = Entry(decoder_tab, bg='light grey', borderwidth=2,
                             textvariable=dec_entry_input_text)
 dec_entry_input_box.bind("<Return>", (lambda event: entry_return_pressed(0)))
-dec_entry_input_box.grid(row=2, column=2)
+dec_entry_input_box.grid(row=2, column=0)
 
 dec_entry_output_text = StringVar(None, "output/initial_image_dec.png")
 dec_entry_output_box = Entry(decoder_tab, bg='light grey', borderwidth=2,
-                             textvariable=dec_entry_output_text).grid(row=2, column=7)
+                             textvariable=dec_entry_output_text).grid(row=2, column=2)
+
+# Update graphs with initial wav samples
+update_graph(0)
+update_graph(1)
 
 # Forward and Backward buttons
 button_backward = Button(encoder_tab, text="<<", command=backward,
-                         state=DISABLED).grid(row=1, column=0, sticky=E)
+                         state=DISABLED).grid(row=1, column=0, padx=20, sticky=NW)
 button_forward = Button(encoder_tab, text=">>", command=forward,
-                        state=DISABLED).grid(row=1, column=2, sticky=W)
+                        state=DISABLED).grid(row=1, column=0, padx=20, sticky=NE)
 
 # Encode/Decode buttons
-encode_button = Button(encoder_tab, text="Encode", command=lambda: popups(1)).grid(
-    row=1, column=3, rowspan=2, padx=10, pady=5, sticky=N+S)
-decode_button = Button(decoder_tab, text="Decode", command=lambda: popups(0)).grid(
-    row=1, column=5, padx=10, rowspan=2, pady=5, sticky=N+S)
+Button(encoder_tab, text="Encode", command=lambda: popups(1)).grid(row=1, column=1, rowspan=2, pady=5, sticky=NSEW)
+Button(decoder_tab, text="Decode", command=lambda: popups(0)).grid(row=1, column=1, rowspan=2, pady=5, sticky=NSEW)
+
+# Color Picker button
+Button(decoder_tab, text = "Select color", command = choose_color).grid(row=0, column=1, pady=90, sticky=EW + S)
+
 
 # Rotate image button
-encoder_rotate_button = Button(encoder_tab, text="Rotate",
-                               command=rotate_image)
-encoder_rotate_button.grid(row=0, column=3, sticky=S)
+Button(encoder_tab, text="Rotate", command=rotate_image).grid(row=0, column=1, sticky=SW)
 
 # Mirror image button
-encoder_mirror_button = Button(encoder_tab, text="Mirror",
-                               command=mirror_image)
-encoder_mirror_button.grid(row=0, column=3, pady=30, sticky=S)
+Button(encoder_tab, text="Mirror", command=mirror_image).grid(row=0, column=1, sticky=SE)
 
 # Flip image button
-encoder_flip_button = Button(encoder_tab, text="Flip",
-                               command=flip_image)
-encoder_flip_button.grid(row=0, column=3, pady=30, sticky=SW)
+Button(encoder_tab, text="Flip", command=flip_image).grid(row=0, column=1, padx=5, pady=30, sticky=SE)
+
+# Save button
+Button(encoder_tab, text="Save", command=save_image).grid(row=0, column=1, padx=5, pady=30, sticky=SW)
 
 # Accept enhancements button
-accept_enhance_button = Button(enhancement_frame, text="Add",
-                               command=accept_enhancements)
-accept_enhance_button.grid(row=8, column=0, sticky=SE)
+Button(enhancement_frame, text="Add", command=accept_enhancements).grid(row=8, column=0, sticky=SE)
 
 # Encoder browse buttons
-enc_browse_input_button = Button(encoder_tab, text="Browse", command=lambda: browse_dir(1, 1)).grid(
-    row=2, column=0, padx=10, pady=10, sticky=E)
-enc_browse_output_button = Button(encoder_tab, text="Browse", command=lambda: browse_dir(1, 0)).grid(
-    row=2, column=7, padx=10, pady=5)
+Button(encoder_tab, text="Browse", command=lambda: browse_dir(1, 1)).grid(  # input browse button
+    row=2, column=0, padx=10, pady=10, sticky=W)
+Button(encoder_tab, text="Browse", command=lambda: browse_dir(1, 0)).grid(  # output browse button
+    row=2, column=2, padx=10, pady=5, sticky=E)
 
 # Decoder browse buttons
-dec_browse_input_button = Button(decoder_tab, text="Browse", command=lambda: browse_dir(0, 1)).grid(
-    row=2, column=1, padx=10, pady=5)
-dec_browse_output_button = Button(decoder_tab, text="Browse", command=lambda: browse_dir(0, 0)).grid(
-    row=2, column=8, padx=10, pady=5)
+Button(decoder_tab, text="Browse", command=lambda: browse_dir(0, 1)).grid(  # input browse button
+    row=2, column=0, padx=80, pady=5, sticky=W)
+Button(decoder_tab, text="Browse", command=lambda: browse_dir(0, 0)).grid(  # output browse button
+    row=2, column=2, padx=10, pady=5, sticky=E)
 
 # Exit buttons
-enc_button_exit = Button(encoder_tab, text="Quit", command=root.quit).grid(
-    row=0, column=7, padx=10, pady=10, sticky=SW + SE)
-dec_button_exit = Button(decoder_tab, text="Quit", command=root.quit).grid(
-    row=1, column=1, sticky=W + E)
+Button(encoder_tab, text="Quit", command=root.quit).grid(row=0, column=2, padx=10, pady=10, sticky=SE)  # enc exit
+Button(decoder_tab, text="Quit", command=root.quit).grid(row=1, column=2, padx=20, pady=5, sticky=E) # dec exit
 
 # Send to Decoder button
-send_to_decoder_button = Button(encoder_tab, text="Send to Decoder", command=send_to_decoder).grid(
-    row=1, column=7, padx=5, sticky=W+E)
+Button(encoder_tab, text="Send to Decoder", command=send_to_decoder).grid(row=1, column=2, padx=5, sticky=E)
+
+# Button to play/stop plot, decoder tab
+Button(dec_plot_frame, text="Run", command=lambda: pre_run_plot(running)).grid(row=1, column=0, padx=130, pady=5, sticky=NS + E)
+Button(dec_plot_frame, text="Stop", command=stop_plot).grid(row=1, column=0, padx=90, pady=5, sticky=NS + E)
 
 # Playback and Pause Buttons
-playback_button = Button(decoder_tab, text="Play", command=lambda: wav_playback(dec_entry_input_text.get())).grid(
-    row=1, column=0)
-pause_button = Button(decoder_tab, text="Stop", command=lambda: wav_playback(None)).grid(
-    row=2, column=0)
+playback_button = Button(decoder_tab, text="Play", command=play_wav)
+playback_button.grid(row=0, column=0, padx=10, pady=5, sticky=SW)
+pause_button = Button(decoder_tab, text="Pause", command=lambda: pause_wav(paused))
+pause_button.grid(row=1, column=0, padx=10, sticky=W)
+stop_button = Button(decoder_tab, text="Stop", command=stop_wav)
+stop_button.grid(row=2, column=0, padx=10, sticky=W)
 
 # Main loop for the GUI application
 root.mainloop()
