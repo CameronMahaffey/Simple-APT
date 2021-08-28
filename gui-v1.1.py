@@ -6,8 +6,9 @@ from tkinter import colorchooser
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import ImageTk, Image, ImageOps, ImageFilter, ImageColor
-import pygame
-import pathlib
+from pygame import mixer
+from pathlib import Path
+from random import randint
 import subprocess
 import numpy as np
 import scipy.io.wavfile as wav
@@ -33,9 +34,9 @@ class CustomToolbar(NavigationToolbar2Tk):
 
 # Function to add false color to a greyscale image
 def false_color(image_to_change):
-    global rgby_tuple
-    colors = rgby_tuple
-    if image_to_change.mode not in ['L']:
+    global rgby_list
+    colors = rgby_list
+    if image_to_change.mode not in ['L', 'RGB']:
         raise TypeError('Unsupported source image mode: {}'.format(image_to_change.mode))
     image_to_change.load()
     print(image_to_change.mode)
@@ -48,8 +49,8 @@ def false_color(image_to_change):
             tuple(c[1] for c in palette) +
             tuple(c[2] for c in palette))
 
-    # Create grayscale version of image of necessary.
-    grey_scale = image_to_change if Image.getmodebands(image_to_change.mode) == 1 else grayscale(image_to_change)
+
+    grey_scale = image_to_change
 
     # Convert grayscale to an equivalent RGB mode image.
     if Image.getmodebands(image_to_change.mode) < 4:  # Non-alpha image?
@@ -68,40 +69,167 @@ def false_color(image_to_change):
 # Function that will be invoked when the color wheel button is clicked
 def choose_color():
     global dec_image
-    color_red = colorchooser.askcolor(title ="Choose RED")
-    color_green = colorchooser.askcolor(title="Choose GREEN")
-    color_blue = colorchooser.askcolor(title="Choose BLUE")
-    color_red = color_red[1].lstrip('#')
-    color_red = [color_red[0:2], color_red[2:4], color_red[4:6]]
-    color_red = [int(i, 16) for i in color_red]
-    color_green = color_green[1].lstrip('#')
-    color_green = [color_green[0:2], color_green[2:4], color_green[4:6]]
-    color_green = [int(i, 16) for i in color_green]
-    color_blue = color_blue[1].lstrip('#')
-    color_blue = [color_blue[0:2], color_blue[2:4], color_blue[4:6]]
-    color_blue = [int(i, 16) for i in color_blue]
-    change_colors((color_red, color_green, color_blue,))
+    if check_var.get() == 0:
+        print("Check 'False Color'")
+    else:
+        color_red = colorchooser.askcolor(title ="Choose RED")
+        color_green = colorchooser.askcolor(title="Choose GREEN")
+        color_blue = colorchooser.askcolor(title="Choose BLUE")
+        color_red = color_red[1].lstrip('#')
+        color_red = [color_red[0:2], color_red[2:4], color_red[4:6]]
+        color_red = [int(i, 16) for i in color_red]
+        color_green = color_green[1].lstrip('#')
+        color_green = [color_green[0:2], color_green[2:4], color_green[4:6]]
+        color_green = [int(i, 16) for i in color_green]
+        color_blue = color_blue[1].lstrip('#')
+        color_blue = [color_blue[0:2], color_blue[2:4], color_blue[4:6]]
+        color_blue = [int(i, 16) for i in color_blue]
+        change_colors((color_red, color_green, color_blue,))
 
-    if rb2.get() == "False Color":
-        image_to_enhance = (ImageTk.getimage(new_dec_image[0])).convert('L')
-        enhanced_image = false_color(image_to_enhance)
-        enhanced_image = ImageTk.PhotoImage(enhanced_image)
+        image_to_color = (ImageTk.getimage(new_dec_image[0])).convert('L')
+        colored_image = false_color(image_to_color)
+        colored_image = ImageTk.PhotoImage(colored_image)
 
-        if len(new_dec_image) == 2:
-            new_dec_image.pop()
-        new_dec_image.append(enhanced_image)
+        new_dec_image[2] = colored_image
 
         # reload processed image in the frame
         dec_image.grid_forget()
-        dec_image = Label(dec_image_frame, image=new_dec_image[1], padx=10, pady=10, relief=SUNKEN)
+        dec_image = Label(dec_image_frame, image=new_dec_image[2], padx=10, pady=10, relief=SUNKEN)
         dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
 
-# Function to change the RGB colors
-def change_colors(color_tuple):
-    global rgby_tuple
-    rgby_tuple = color_tuple + ([255, 255, 0],)
-    print(f"RGBY Tup: {rgby_tuple}")
+def pre_color_cycle():
+    global start_color_cycle_btn
+    start_color_cycle_btn.config(state=DISABLED)
+    print("Starting color cycle!")
+    color_cycle()
+
+
+def stop_color_cycle():
+    global timer_id
+    global start_color_cycle_btn
+    start_color_cycle_btn.config(state=ACTIVE)
+    root.after_cancel(timer_id)
+
+
+# Cycle through all colors
+def color_cycle():
+    global rgby_list
+    global dec_image
+    global timer_id
+    global count_up
+    timer_id = root.after(50, color_cycle)
+
+    change_amt = 30
+
+    # lazy coded algorithm for full color spectrum
+    for i in range(2):
+        red = rgby_list[i][0]
+        green = rgby_list[i][1]
+        blue = rgby_list[i][2]
+
+        if count_up:
+            if red == 0 and green == 0 and blue <= 255:
+                blue += change_amt
+                if blue >= 255:
+                    blue = 255
+                    green += change_amt
+            elif red == 0 and green <= 255 and blue == 255:
+                green += change_amt
+                if green >= 255:
+                    green = 255
+                    blue -= change_amt
+            elif red == 0 and green == 255 and blue <= 255:
+                blue -= change_amt
+                if blue <= 0:
+                    blue = 0
+                    red += change_amt
+            elif red <= 255 and green == 255 and blue == 0:
+                red += change_amt
+                if red >= 255:
+                    red = 255
+                    green -= change_amt
+            elif red == 255 and green <= 255 and blue == 0:
+                green -= change_amt
+                if green <= 0:
+                    green = 0
+                    blue += change_amt
+            elif red == 255 and green == 0 and blue <= 255:
+                blue += change_amt
+                if blue >= 255:
+                    blue = 255
+                    green += change_amt
+            elif red == 255 and green <= 255 and blue == 255:
+                green += change_amt
+                if green >= 255:
+                    green = 255
+                    blue -= change_amt
+                    count_up = False
+        else:
+            if red == 255 and green == 255 and blue <= 255:
+                blue -= change_amt
+                if blue <= 0:
+                    blue = 0
+                    green -= change_amt
+            elif red == 255 and green <= 255 and blue == 0:
+                green -= change_amt
+                if green <= 0:
+                    green = 0
+                    blue += change_amt
+            elif red == 255 and green == 0 and blue <= 255:
+                blue += change_amt
+                if blue >= 255:
+                    blue = 255
+                    red -= change_amt
+            elif red <= 255 and green == 0 and blue == 255:
+                red -= change_amt
+                if red <= 0:
+                    red = 0
+                    green += change_amt
+            elif red == 0 and green <= 255 and blue == 255:
+                green += change_amt
+                if green >= 255:
+                    green = 255
+                    blue -= change_amt
+            elif red == 0 and green == 255 and blue <= 255:
+                blue -= change_amt
+                if blue <= 0:
+                    blue = 0
+                    green -= change_amt
+            elif red == 0 and green <= 255 and blue == 0:
+                green -= change_amt
+                if green <= 0:
+                    green = 0
+                    blue += change_amt
+                    count_up = True
+
+        rgby_list[i] = [red, green, blue]
+
+    # run false color function
+    image_to_cycle = ImageTk.getimage(new_dec_image[0])
+    image_to_cycle = image_to_cycle.convert('L')
+    colored_image = false_color(image_to_cycle)
+    new_dec_image[2] = ImageTk.PhotoImage(colored_image)
+
+    # Update dec image
+    dec_image.grid_forget()
+    dec_image = Label(dec_image_frame, image=new_dec_image[2], padx=10, pady=10, relief=SUNKEN)
+    dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+
+
+
+# Function to switch between original and colored decoder image
+def switch_between():
+    global dec_image
+
+    dec_image.grid_forget()
+    rb2.set("Original")
+    if check_var.get():
+        dec_image = Label(dec_image_frame, image=new_dec_image[2], padx=10, pady=10, relief=SUNKEN)
+    else:
+        dec_image = Label(dec_image_frame, image=new_dec_image[0], padx=10, pady=10, relief=SUNKEN)
+
+    dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
 
 # Get the current index of the image
@@ -170,15 +298,6 @@ def update_graph(which_plot):
         dec_canvas.draw()
         dec_subplot.legend()
         print("Decoder Plot Updated")
-
-
-# Declare and register callbacks
-# def on_xlims_change(event_ax):
-#     print("updated xlims: ", event_ax.get_xlim())
-#
-#
-# def on_ylims_change(event_ax):
-#     print("updated ylims: ", event_ax.get_ylim())
 
 
 # Callback function for button press event inside figure
@@ -366,7 +485,7 @@ def new_image_list(directory_path):
     del enc_image_filepath_list[:]  # clear the image filepath list (for entry box)
     current_image_index = 0  # reset the clicked image index
     print(f"All images in {directory_path}:")
-    for file in pathlib.Path(directory_path).glob('*.*'):  # search all contents in directory path
+    for file in Path(directory_path).glob('*.*'):  # search all contents in directory path
         image_file_path = str(file)
         if image_file_path.lower().endswith(('.jpg', '.png', '.pgm')):  # if a photo,
             print(image_file_path)
@@ -376,10 +495,17 @@ def new_image_list(directory_path):
                 pgm_array = open(image_file_path, 'r')  # open the .pgm file to create a preview image
                 for i in range(4):  # remove first four lines of pgm
                     pgm_array.readline()
-                pgm_array = np.uint8(pgm_array.read().split('\n'))      # create a numpy array from .pgm contents
-                pgm_array = np.reshape(pgm_array, (pgm_array.size // 909, 909))  # make the array 2D
-                # sprint(pgm_array)
-                image = ImageTk.PhotoImage(resize_to_fit(Image.fromarray(pgm_array)))
+                pgm_array = pgm_array.read().split('\n')
+                if pgm_array[len(pgm_array)-1] == '':  # if last character has a space dont include in list
+                    pgm_array.pop()
+                pgm_array = np.uint8(pgm_array)      # create a numpy array from .pgm contents
+                try:
+                    pgm_array = np.reshape(pgm_array, (pgm_array.size // 909, 909))  # make the array 2D
+                    image = ImageTk.PhotoImage(resize_to_fit(Image.fromarray(pgm_array)))
+                except:
+                    print("Not able to preview .pgm that isn't 909 in width :(")
+                    image = ImageTk.PhotoImage(resize_to_fit(Image.open("misc/pgm_placeholder.png")))
+                # print(pgm_array)
             else:
                 image = ImageTk.PhotoImage(resize_to_fit(Image.open(image_file_path)))  # add all images in order
             encoder_image_list.append(image)  # to the image_list
@@ -471,11 +597,32 @@ def update_status(status_message):
 def new_decoder_image(image_filepath):
     global dec_image
     del new_dec_image[:]
-    new_dec_image.append(ImageTk.PhotoImage(resize_to_fit(Image.open(image_filepath))))
+    the_new_image_LA = Image.open(image_filepath)  # open the image
+    the_new_image = ImageTk.PhotoImage(resize_to_fit(the_new_image_LA))  # convert before append
+    new_dec_image.append(the_new_image)  # add the new image
+    new_dec_image.append(the_new_image)  # add copy for enhance preview
+    the_new_image = the_new_image_LA.convert('L')  # now new image is 'L', for false color func
+    the_new_image = false_color(the_new_image)  # get the colored version
+    the_new_image = ImageTk.PhotoImage(resize_to_fit(the_new_image))  # convert before append
+    new_dec_image.append(the_new_image)  # add the new colored image
+    new_dec_image.append(the_new_image)  # add copy for enhance preview
+    print(f"{new_dec_image[0]}, {new_dec_image[2]}, {len(new_dec_image)}")
     dec_image.grid_forget()
     dec_image = Label(dec_image_frame, image=new_dec_image[0], padx=10, pady=10, relief=SUNKEN)
     dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
+
+# Reset Dec image function
+def reset_dec_image():
+    global rgby_list
+    file_path = dec_entry_output_text.get()
+    if file_path == '':
+        print("Error. Insert file path in the browse box.")
+    else:
+        rgby_list = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+        new_decoder_image(file_path)
+        rb2.set("Original")
+        check_var.set(0)
 
 # Simple redirector function to make all stdout data go to the GUI
 def sysout_redirector(input_str):
@@ -498,8 +645,8 @@ def popups(tab):
         input_file_path =  dec_entry_input_text.get()  # get filepath from decoder input box
     if msg == 1:
         # quit pygame mixer to get permission to .wav
-        if pygame.mixer.get_init() is not None:
-            pygame.mixer.quit()
+        if mixer.get_init() is not None:
+            mixer.quit()
         # save the temporary image into folder
         image_index = get_current_image_index()
         if rb1 == "Nothing":
@@ -532,10 +679,10 @@ def popups(tab):
                                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE, shell=True)
         sysout_redirector(call_to_process.stdout.read())  # pipe stdout to program output tab
 
-        delete_temp_file = pathlib.Path("temp.jpg")
+        delete_temp_file = Path("temp.jpg")
         delete_temp_file.unlink()
 
-        pygame.mixer.init()  #re initialize mixer
+        mixer.init()  #re initialize mixer
 
         if output_file_path != '' and input_file_path != '':
             if tab == 0:
@@ -559,16 +706,16 @@ def play_wav():
     paused = False
     pause_button.config(text="Pause")
     file_path = dec_entry_input_text.get()
-    pygame.mixer.music.stop()  # just in case something is still playing
-    pygame.mixer.music.load(file_path)
-    pygame.mixer.music.play(loops=0)
+    mixer.music.stop()  # just in case something is still playing
+    mixer.music.load(file_path)
+    mixer.music.play(loops=0)
     print("Playing wav.")
 
 
 # Stop function
 def stop_wav():
     global paused
-    pygame.mixer.music.stop()  # just in case something is still playing
+    mixer.music.stop()  # just in case something is still playing
     paused = True
     print("Playback stopped.")
 
@@ -580,12 +727,12 @@ def pause_wav(is_paused):
     paused = is_paused
     if paused:
         pause_button.config(text="Pause")
-        pygame.mixer.music.unpause()
+        mixer.music.unpause()
         paused = False
         print("Playback unpaused.")
     else:
         pause_button.config(text="Resume")
-        pygame.mixer.music.pause()
+        mixer.music.pause()
         paused = True
         print("Playback paused.")
 
@@ -650,17 +797,32 @@ def mirror_image():
     update_enc_image(image_index)
 
 
-# Function to save image to a selected directory with a name
-def save_image():
-    image_index = get_current_image_index()
+# Function to save images to a selected directory with a name
+def save_image(tab):
     save_to_filepath = filedialog.asksaveasfilename()
+    if save_to_filepath == '':
+        print("Save cancelled.")
     if not save_to_filepath.endswith(('.jpg', '.png')):
         save_to_filepath += '.jpg'
     print(f"Saving image to {save_to_filepath}...")
-    if rb1.get() == "Nothing":
-        save_this_image = ImageTk.getimage(encoder_image_list[image_index])
-    else:
-        save_this_image = ImageTk.getimage(enhanced_image_list[image_index])
+    if tab == 1:  # Encoder Save pressed
+        image_index = get_current_image_index()
+        if rb1.get() == "Nothing":
+            image_to_use = encoder_image_list[image_index]
+        else:
+            image_to_use = enhanced_image_list[image_index]
+    else:  # Decoder save pressed
+        if check_var.get() == 0:  # Greyscale image [0] or [1]
+            if rb2.get() == "Original":
+                image_to_use = new_dec_image[0]
+            else:
+                image_to_use = new_dec_image[1]
+        else:
+            if rb2.get() == "Original":
+                image_to_use = new_dec_image[2]
+            else:
+                image_to_use = new_dec_image[3]
+    save_this_image = ImageTk.getimage(image_to_use)
     save_this_image = save_this_image.convert('RGB')
     save_this_image.save(save_to_filepath, "JPEG")
     print(f"Image saved to {save_to_filepath}")
@@ -711,34 +873,43 @@ def processor_handler():
     selected_rb = rb2.get()
     print(f"Selected button: {selected_rb}")
     update_status(f"Selected button:  {selected_rb}")
-    copy_of_image = new_dec_image[0]
+    if check_var.get() == 0:
+        copy_of_image = new_dec_image[0]
+    else:
+         copy_of_image = new_dec_image[2]
+    copy2 = copy_of_image
     image_to_enhance = ImageTk.getimage(copy_of_image)  # convert into a PIL image
-    image_to_enhance = image_to_enhance.convert('L')  # convert into greyscale
+
     # print(f'image mode: {image_to_enhance.mode}')
     if selected_rb == "Original":
-        enhanced_image = new_dec_image[0]
-    elif selected_rb == "False Color":
-        enhanced_image = false_color(image_to_enhance)
+        enhanced_image = copy2
+    elif selected_rb == "Colorize":
+        image_to_enhance = image_to_enhance.convert('L')  # convert into greyscale
+        enhanced_image = ImageOps.colorize(image_to_enhance, black="purple", white="yellow")
     elif selected_rb == "Edge Enhance":
         enhanced_image = image_to_enhance.filter(ImageFilter.EDGE_ENHANCE)
     elif selected_rb == "Gauss Blur":
         enhanced_image = image_to_enhance.filter(ImageFilter.GaussianBlur(radius=3))
     elif selected_rb == "EQ":
+        image_to_enhance = image_to_enhance.convert('RGB')  # convert into greyscale
         enhanced_image = ImageOps.equalize(image_to_enhance)
     elif selected_rb == "Posterize":
+        image_to_enhance = image_to_enhance.convert('RGB')  # convert into greyscale
         enhanced_image = ImageOps.posterize(image_to_enhance, 2)
     else:
         return
     if selected_rb != "Original":  # convert back into a PhotoImage object
         enhanced_image = ImageTk.PhotoImage(enhanced_image)
 
-    if len(new_dec_image) == 2:
-        new_dec_image.pop()
-    new_dec_image.append(enhanced_image)
 
     # reload processed image in the frame
     dec_image.grid_forget()
-    dec_image = Label(dec_image_frame, image=new_dec_image[1], padx=10, pady=10, relief=SUNKEN)
+    if check_var.get() == 0:
+        new_dec_image[1] = enhanced_image
+        dec_image = Label(dec_image_frame, image=new_dec_image[1], padx=10, pady=10, relief=SUNKEN)
+    else:
+        new_dec_image[3] = enhanced_image
+        dec_image = Label(dec_image_frame, image=new_dec_image[3], padx=10, pady=10, relief=SUNKEN)
     dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
 
@@ -748,6 +919,19 @@ def accept_enhancements():
     encoder_image_list[image_index] = enhanced_image_list[image_index]
     print("Enhancement accepted.")
     rb1.set("Nothing")
+
+
+# Function for accepting processing button
+def accept_processing():
+    if rb2.get() == 'Original':
+        print("Nothing to Process.")
+    else:
+        if check_var.get() == 0:
+            new_dec_image[0] = new_dec_image[1]
+        else:
+            new_dec_image[2] = new_dec_image[3]
+        print("Processing accepted.")
+        rb2.set("Original")
 
 
 # Function I might use to make clicking tabs more interesing
@@ -777,10 +961,11 @@ other_object_color = '#3695C2'
 current_image_index = 0
 plot_counter = 0
 sys.stdout.write = sysout_redirector
-pygame.mixer.init()  #initialize pygame mixer
+mixer.init()  #initialize pygame mixer
 paused = False
 running = False
-rgby_tuple = ((255, 0, 0), (0, 255, 0), (0, 0, 255))
+rgby_list = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]  # list to hold default R G B values
+count_up = True
 
 # Make the root GUI, give it a title and icon, change the font and background
 root = Tk()
@@ -804,6 +989,22 @@ tab_control.add(testing_tab, text="Testing")
 tab_control.pack()
 tab_control.bind('<Button-1>', tab_clicked)
 
+# Create and place the frame that will hold the output of program(s)
+read_only_frame = LabelFrame(read_only_tab, bg=other_object_color)
+read_only_frame.grid(row=0, column=0, padx=10, pady=10, sticky=W + E)
+
+# Add a program output title, scrollbar and textbox to the read_only_frame
+read_only_title = Label(read_only_frame, pady=5, font='Arial 10 bold',
+                        bg=other_object_color, text='Program Output')
+read_only_title.grid(row=0, column=0)
+read_only_scrollbar = Scrollbar(read_only_frame, bg=other_object_color,
+                                activebackground=other_object_color)
+read_only_textbox = Text(read_only_frame, width=135, bg="light grey", yscrollcommand=read_only_scrollbar.set)
+read_only_textbox.bind("<Key>", lambda e: "break")  # cheeky way to make the textbox read only
+read_only_scrollbar.config(command=read_only_textbox.yview)
+read_only_textbox.grid(row=1, column=0)
+read_only_scrollbar.grid(row=1, column=1, sticky=N + S)
+
 # Create the title labels for first two tabs
 encoder_tab_title = Label(encoder_tab, text="SIMPLE APT ENCODER",
                           font="Abadi 24 italic bold", bg=other_object_color,
@@ -815,8 +1016,15 @@ decoder_tab_title = Label(decoder_tab, text="SIMPLE APT DECODER",
 # Create initial image objects and place in the initial image lists
 initial_enc_image = ImageTk.PhotoImage(resize_to_fit(Image.open('misc/initial_image.png')))
 initial_dec_image = ImageTk.PhotoImage(resize_to_fit(Image.open('misc/initial_image_grey.png')))
+initial_dec_color = Image.open('misc/initial_image_grey.png')
+initial_dec_color = initial_dec_color.convert('L')
+initial_dec_color = ImageTk.PhotoImage(resize_to_fit(false_color(initial_dec_color)))
+
 encoder_image_list.append(initial_enc_image)
 new_dec_image.append(initial_dec_image)
+new_dec_image.append(initial_dec_image)
+new_dec_image.append(initial_dec_color)
+new_dec_image.append(initial_dec_color)
 enhanced_image_list.append(initial_enc_image)
 enc_image_filename_list.append('initial_image.png')
 enc_image_filepath_list.append('misc/initial_image.png')
@@ -889,32 +1097,16 @@ enc_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 dec_image = Label(dec_image_frame, image=new_dec_image[0], relief=SUNKEN)
 dec_image.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
-# Create and place the frame that will hold the output of program(s)
-read_only_frame = LabelFrame(read_only_tab, bg=other_object_color)
-read_only_frame.grid(row=0, column=0, padx=10, pady=10, sticky=W + E)
-
-# Add a program output title, scrollbar and textbox to the read_only_frame
-read_only_title = Label(read_only_frame, pady=5, font='Arial 10 bold',
-                        bg=other_object_color, text='Program Output')
-read_only_title.grid(row=0, column=0)
-read_only_scrollbar = Scrollbar(read_only_frame, bg=other_object_color,
-                                activebackground=other_object_color)
-read_only_textbox = Text(read_only_frame, width=135, bg="light grey", yscrollcommand=read_only_scrollbar.set)
-read_only_textbox.bind("<Key>", lambda e: "break")  # cheeky way to make the textbox read only
-read_only_scrollbar.config(command=read_only_textbox.yview)
-read_only_textbox.grid(row=1, column=0)
-read_only_scrollbar.grid(row=1, column=1, sticky=N + S)
-
-# Enhancement Frame in the Encoder Tab
-enhancement_frame = LabelFrame(encoder_tab, bg=other_object_color)
-enhancement_frame.grid(row=0, column=1, padx=10, pady=30)
-enc_frame_title = Label(enhancement_frame, text="Enhancements", bg=other_object_color,
+# Post-Processing Frame in the Encoder Tab
+preprocess_frame = LabelFrame(encoder_tab, bg=other_object_color)
+preprocess_frame.grid(row=0, column=1, padx=10, pady=30)
+enc_frame_title = Label(preprocess_frame, text="Pre-Process", bg=other_object_color,
                         font="times 12 underline").grid(row=0, column=0, sticky=W + E)
 
-# Processing Frame in the Decoder Tab
-processing_frame = LabelFrame(decoder_tab, bg=other_object_color)
-processing_frame.grid(row=0, column=1, padx=10, pady=10)
-dec_frame_title = Label(processing_frame, text="Processing", bg=other_object_color,
+# Pre-Processing Frame in the Decoder Tab
+postprocess_frame = LabelFrame(decoder_tab, bg=other_object_color)
+postprocess_frame.grid(row=0, column=1, padx=10, pady=10)
+dec_frame_title = Label(postprocess_frame, text="Post-Process", bg=other_object_color,
                         font="times 12 underline").grid(row=0, column=0, sticky=W + E)
 
 rb1 = StringVar(None, "Nothing")
@@ -930,7 +1122,7 @@ enhancement_values = {"Nothing": "Nothing",
 
 rb_row_placement = 1
 for (text, value) in enhancement_values.items():
-    Radiobutton(enhancement_frame, text=text, variable=rb1,
+    Radiobutton(preprocess_frame, text=text, variable=rb1,
                 command=enhancement_handler, value=value,
                 bg=other_object_color, activebackground=other_object_color,
                 indicator=1).grid(row=rb_row_placement, column=0, pady=1, sticky=W)
@@ -942,16 +1134,22 @@ rb2 = StringVar(None, "Original")
 processing_values = {"Original": "Original",
                      "Gauss Blur": "Gauss Blur",
                      "Edge Enhance": "Edge Enhance",
-                     "EQ": "EQ",
+                     "Colorize": "Colorize",
                      "Posterize": "Posterize",
-                     "False Color": "False Color"}
+                     "EQ": "EQ"}
 
 rb_row_placement = 1
 for (text, value) in processing_values.items():
-    Radiobutton(processing_frame, text=text, variable=rb2,
+    Radiobutton(postprocess_frame, text=text, variable=rb2,
                 command=processor_handler, bg=other_object_color, activebackground=other_object_color,
                 value=value, indicator=1).grid(row=rb_row_placement, column=0, pady=1, sticky=W)
     rb_row_placement += 1
+
+# Check button for False color
+check_var = IntVar(None, 0)
+Checkbutton(decoder_tab, text="False Color", variable=check_var, bg=background_color,
+            fg="light grey", activebackground=background_color, selectcolor=other_object_color,
+            command=switch_between).grid(row=0, column=1, pady=90, sticky=N)
 
 # Initial Status Bars
 enc_status = Label(encoder_tab, text="Select an input file with 'Browse' or type in the filepath",
@@ -1009,11 +1207,13 @@ Button(encoder_tab, text="Mirror", command=mirror_image).grid(row=0, column=1, s
 # Flip image button
 Button(encoder_tab, text="Flip", command=flip_image).grid(row=0, column=1, padx=5, pady=30, sticky=SE)
 
-# Save button
-Button(encoder_tab, text="Save", command=save_image).grid(row=0, column=1, padx=5, pady=30, sticky=SW)
+# Encoder/Decoder Save buttons
+Button(encoder_tab, text="Save", command=lambda: save_image(1)).grid(row=0, column=1, padx=5, pady=30, sticky=SW)
+Button(decoder_tab, text="Save", command=lambda: save_image(0)).grid(row=0, column=1, padx=5, pady=50, sticky=SW)
 
-# Accept enhancements button
-Button(enhancement_frame, text="Add", command=accept_enhancements).grid(row=8, column=0, sticky=SE)
+# Accept enhancements/processing buttons
+Button(preprocess_frame, text="Add", command=accept_enhancements).grid(row=8, column=0, sticky=SE)
+Button(postprocess_frame, text="Add", command=accept_processing).grid(row=6, column=0, sticky=SE)
 
 # Encoder browse buttons
 Button(encoder_tab, text="Browse", command=lambda: browse_dir(1, 1)).grid(  # input browse button
@@ -1038,6 +1238,9 @@ Button(encoder_tab, text="Send to Decoder", command=send_to_decoder).grid(row=1,
 Button(dec_plot_frame, text="Run", command=lambda: pre_run_plot(running)).grid(row=1, column=0, padx=130, pady=5, sticky=NS + E)
 Button(dec_plot_frame, text="Stop", command=stop_plot).grid(row=1, column=0, padx=90, pady=5, sticky=NS + E)
 
+# Reset decoder image picture
+Button(decoder_tab, text="Reset", command=reset_dec_image).grid(row=0, column=1, padx=5, pady=50, sticky=SE)
+
 # Playback and Pause Buttons
 playback_button = Button(decoder_tab, text="Play", command=play_wav)
 playback_button.grid(row=0, column=0, padx=10, pady=5, sticky=SW)
@@ -1045,6 +1248,11 @@ pause_button = Button(decoder_tab, text="Pause", command=lambda: pause_wav(pause
 pause_button.grid(row=1, column=0, padx=10, sticky=W)
 stop_button = Button(decoder_tab, text="Stop", command=stop_wav)
 stop_button.grid(row=2, column=0, padx=10, sticky=W)
+
+# Last buttons, color cycle and stop
+start_color_cycle_btn = Button(decoder_tab, text="Cycle!", command=pre_color_cycle)
+start_color_cycle_btn.grid(row=0, column=1, padx=5, pady=50, sticky=N)
+Button(decoder_tab, text="Stop", command=stop_color_cycle).grid(row=0, column=1, padx=5, pady=50, sticky=NE)
 
 # Main loop for the GUI application
 root.mainloop()
